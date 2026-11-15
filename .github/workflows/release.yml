@@ -1,0 +1,96 @@
+name: release
+
+# release-please keeps a Release PR open. Merging it creates a DRAFT release and the tag.
+# The publish job then builds the exe, uploads it, and only then makes the release public,
+# so users never see a release without its asset. The in-app update check reads
+# /releases/latest, which ignores drafts.
+#
+# Re-run a failed publish with workflow_dispatch and the tag of the draft release.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of an existing draft release to rebuild and publish (vMAJOR.MINOR.PATCH)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # Pull requests opened with the built-in token start no CI run. A repository secret
+      # GH_TOKEN (a token with contents and pull requests write access) fixes that.
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Validate the release tag
+        shell: pwsh
+        run: |
+          if ($env:TAG -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw "Not a vMAJOR.MINOR.PATCH tag: '$env:TAG'" }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag, the crate version, and the release state
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne $env:TAG) { throw "Tag $env:TAG does not match Cargo version $version" }
+          $isDraft = gh release view $env:TAG --json isDraft --jq '.isDraft'
+          if ($LASTEXITCODE -ne 0) { throw "No release exists for $env:TAG" }
+          if ($isDraft -ne 'true') { throw "Release $env:TAG is already public" }
+
+      - name: Install the pinned toolchain
+        shell: pwsh
+        run: |
+          $channel = (Select-String -Path rust-toolchain.toml -Pattern 'channel = "(.+)"').Matches[0].Groups[1].Value
+          rustup toolchain install $channel --profile minimal --no-self-update
+          if ((rustc --version) -notmatch "^rustc $([regex]::Escape($channel)) ") { throw "rustc is not $channel" }
+
+      - run: cargo test --locked --release
+      - run: cargo build --locked --release
+
+      - name: Upload the assets, then publish the release
+        shell: pwsh
+        run: |
+          Copy-Item target/release/ow-cache-cleaner.exe .
+          $hash = (Get-FileHash ow-cache-cleaner.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  ow-cache-cleaner.exe" | Out-File -Encoding ascii ow-cache-cleaner.exe.sha256
+          gh release upload $env:TAG ow-cache-cleaner.exe ow-cache-cleaner.exe.sha256 --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Upload failed" }
+          gh release edit $env:TAG --draft=false
+          if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
