@@ -44,6 +44,7 @@ pub(super) const ICON_CHECK: &str = "\u{E73E}";
 
 pub(super) struct Fonts {
     caption: IDWriteTextFormat,
+    status: IDWriteTextFormat,
     title: IDWriteTextFormat,
     size: IDWriteTextFormat,
     small: IDWriteTextFormat,
@@ -100,6 +101,7 @@ impl Fonts {
         let normal = DWRITE_FONT_WEIGHT_NORMAL;
         Fonts {
             caption: text_format(dw, ui, 12.0, normal, DWRITE_TEXT_ALIGNMENT_LEADING),
+            status: text_format(dw, ui, 12.0, normal, DWRITE_TEXT_ALIGNMENT_CENTER),
             title: text_format(dw, ui, 14.0, normal, DWRITE_TEXT_ALIGNMENT_LEADING),
             size: text_format(dw, ui, 13.0, normal, DWRITE_TEXT_ALIGNMENT_TRAILING),
             small: text_format(dw, ui, 12.0, normal, DWRITE_TEXT_ALIGNMENT_LEADING),
@@ -240,7 +242,7 @@ impl App {
             };
             fill(go, 6.0, bg);
             text(&button_label, &f.button, go, fg);
-            text(&status, &f.caption, rect(18.0, go.bottom + 10.0, WIN_W - 18.0, go.bottom + 26.0), status_color);
+            text(&status, &f.status, rect(18.0, go.bottom + 10.0, WIN_W - 18.0, go.bottom + 26.0), status_color);
 
             if self.about {
                 let mut veil = color(BG);
