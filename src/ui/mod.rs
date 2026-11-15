@@ -379,10 +379,13 @@ pub fn run() {
 
         let instance = GetModuleHandleW(None).expect("module handle");
         let class = w!("ShaderCacheCleaner");
+        let icon = LoadIconW(Some(instance.into()), PCWSTR(1 as *const u16)).unwrap_or_default();
         let wc = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
             lpfnWndProc: Some(wnd_proc),
             hInstance: instance.into(),
+            hIcon: icon,
+            hIconSm: icon,
             lpszClassName: class,
             ..Default::default()
         };
