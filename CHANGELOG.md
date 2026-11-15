@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/Teakowa/ow-cache-cleaner/compare/v0.1.0...v0.1.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* use the system proxy for the update check ([#3](https://github.com/Teakowa/ow-cache-cleaner/issues/3)) ([43b17bb](https://github.com/Teakowa/ow-cache-cleaner/commit/43b17bbcbf69cf5c543234b2291ad675abad2422))
+
 ## 0.1.0 (2026-11-15)
 
 
