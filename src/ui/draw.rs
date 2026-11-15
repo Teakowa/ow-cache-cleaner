@@ -15,7 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 use windows::core::{PCWSTR, w};
 
 use super::layout::*;
-use super::{APP_NAME, App, REPO_LABEL};
+use super::{APP_NAME, App, REPO_LABEL, UpdateState};
 use crate::cache;
 
 const D2DERR_RECREATE_TARGET: i32 = 0x8899000Cu32 as i32;
@@ -263,6 +263,16 @@ impl App {
                 text("MIT 许可 · 非暴雪官方工具", &f.small, rect(x, panel.top + 40.0, panel.right - 16.0, panel.top + 60.0), TEXT_DIM);
                 let link = if self.hover == Hit::Link { ACCENT_HOVER } else { ACCENT };
                 text(REPO_LABEL, &f.title, Self::link_rect(), link);
+                let (label, base) = match &self.update {
+                    UpdateState::Idle => ("检查更新".to_string(), ACCENT),
+                    UpdateState::Checking => ("检查中…".to_string(), TEXT_DIM),
+                    UpdateState::Latest => ("已是最新版本".to_string(), OK),
+                    UpdateState::NoRelease => ("暂无发布版本".to_string(), TEXT_DIM),
+                    UpdateState::Available(tag) => (format!("发现新版本 {tag}，点击下载"), ACCENT),
+                    UpdateState::Failed => ("检查失败，点击重试".to_string(), WARN),
+                };
+                let shade = if base == ACCENT && self.hover == Hit::Update { ACCENT_HOVER } else { base };
+                text(&label, &f.title, Self::update_rect(), shade);
             }
 
             brush.SetColor(&color(BORDER));

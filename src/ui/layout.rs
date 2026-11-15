@@ -14,6 +14,7 @@ pub(super) enum Hit {
     Close,
     Info,
     Link,
+    Update,
     Backdrop,
     Row(usize),
     Open(usize),
@@ -58,7 +59,7 @@ impl App {
     }
 
     pub(super) fn height(&self) -> f32 {
-        (self.go_rect().bottom + 10.0 + 16.0 + 16.0).max(170.0)
+        (self.go_rect().bottom + 10.0 + 16.0 + 16.0).max(200.0)
     }
 
     pub(super) fn info_rect() -> D2D_RECT_F {
@@ -70,11 +71,15 @@ impl App {
     }
 
     pub(super) fn panel_rect() -> D2D_RECT_F {
-        rect(18.0, 44.0, WIN_W - 18.0, 150.0)
+        rect(18.0, 44.0, WIN_W - 18.0, 170.0)
     }
 
     pub(super) fn link_rect() -> D2D_RECT_F {
         rect(34.0, 108.0, 300.0, 132.0)
+    }
+
+    pub(super) fn update_rect() -> D2D_RECT_F {
+        rect(34.0, 134.0, 300.0, 158.0)
     }
 
     pub(super) fn close_rect() -> D2D_RECT_F {
@@ -99,6 +104,8 @@ impl App {
         if self.about {
             return if contains(&Self::link_rect(), x, y) {
                 Hit::Link
+            } else if contains(&Self::update_rect(), x, y) {
+                Hit::Update
             } else if contains(&Self::panel_rect(), x, y) {
                 Hit::None
             } else {

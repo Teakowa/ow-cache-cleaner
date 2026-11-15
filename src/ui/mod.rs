@@ -23,7 +23,8 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use crate::cache::{self, CleanResult, Kind, Target};
-use crate::process;
+use crate::update::Fetched;
+use crate::{process, release, update};
 
 mod draw;
 mod layout;
@@ -32,11 +33,22 @@ use self::draw::{Canvas, Fonts, OK, TEXT_DIM, WARN};
 use self::layout::*;
 
 const WM_CLEAN_DONE: u32 = WM_APP + 1;
+const WM_UPDATE_DONE: u32 = WM_APP + 2;
 const TIMER_GAME: usize = 1;
 
 const APP_NAME: &str = "OW Cache Cleaner";
 const REPO_URL: &str = "https://github.com/Teakowa/ow-cache-cleaner";
 const REPO_LABEL: &str = "github.com/Teakowa/ow-cache-cleaner";
+const RELEASES_URL: &str = "https://github.com/Teakowa/ow-cache-cleaner/releases/latest";
+
+enum UpdateState {
+    Idle,
+    Checking,
+    Latest,
+    NoRelease,
+    Available(String),
+    Failed,
+}
 
 enum Phase {
     Idle,
@@ -61,6 +73,7 @@ struct App {
     hover: Hit,
     tracking: bool,
     about: bool,
+    update: UpdateState,
     dpi: f32,
 }
 
@@ -87,6 +100,7 @@ impl App {
                 hover: Hit::None,
                 tracking: false,
                 about: false,
+                update: UpdateState::Idle,
                 dpi: GetDpiForSystem() as f32,
             }
         }
@@ -173,10 +187,7 @@ impl App {
                 }
                 self.invalidate();
             }
-            Hit::Open(i) => unsafe {
-                let path: Vec<u16> = self.rows[i].target.open.to_string_lossy().encode_utf16().chain([0]).collect();
-                ShellExecuteW(None, w!("open"), PCWSTR(path.as_ptr()), None, None, SW_SHOWNORMAL);
-            },
+            Hit::Open(i) => shell_open(&self.rows[i].target.open.to_string_lossy()),
             Hit::Go => self.start_clean(),
             Hit::Info => {
                 self.about = !self.about;
@@ -186,14 +197,45 @@ impl App {
                 self.about = false;
                 self.invalidate();
             }
-            Hit::Link => unsafe {
-                let url: Vec<u16> = REPO_URL.encode_utf16().chain([0]).collect();
-                ShellExecuteW(None, w!("open"), PCWSTR(url.as_ptr()), None, None, SW_SHOWNORMAL);
+            Hit::Link => {
+                shell_open(REPO_URL);
                 self.about = false;
                 self.invalidate();
+            }
+            Hit::Update => match &self.update {
+                UpdateState::Checking => {}
+                UpdateState::Available(_) => shell_open(RELEASES_URL),
+                _ => self.start_update_check(),
             },
             Hit::None => {}
         }
+    }
+
+    fn start_update_check(&mut self) {
+        self.update = UpdateState::Checking;
+        self.invalidate();
+        let hwnd = self.hwnd.0 as isize;
+        std::thread::spawn(move || {
+            let outcome = match update::fetch_latest_release() {
+                Some(Fetched::Body(body)) => match release::latest_tag(&body) {
+                    Some(tag) if release::is_newer(tag, env!("CARGO_PKG_VERSION")) => {
+                        UpdateState::Available(tag.to_string())
+                    }
+                    Some(_) => UpdateState::Latest,
+                    None => UpdateState::Failed,
+                },
+                Some(Fetched::NotFound) => UpdateState::NoRelease,
+                None => UpdateState::Failed,
+            };
+            unsafe {
+                let _ = PostMessageW(
+                    Some(HWND(hwnd as *mut c_void)),
+                    WM_UPDATE_DONE,
+                    WPARAM(0),
+                    LPARAM(Box::into_raw(Box::new(outcome)) as isize),
+                );
+            }
+        });
     }
 
     fn start_clean(&mut self) {
@@ -233,6 +275,13 @@ impl App {
     }
 }
 
+
+fn shell_open(target: &str) {
+    let wide: Vec<u16> = target.encode_utf16().chain([0]).collect();
+    unsafe {
+        ShellExecuteW(None, w!("open"), PCWSTR(wide.as_ptr()), None, None, SW_SHOWNORMAL);
+    }
+}
 
 unsafe fn app<'a>(hwnd: HWND) -> Option<&'a mut App> {
     unsafe { (GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut App).as_mut() }
@@ -355,6 +404,11 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                     app.game_running = running;
                     app.invalidate();
                 }
+                LRESULT(0)
+            }
+            WM_UPDATE_DONE => {
+                app.update = *Box::from_raw(lparam.0 as *mut UpdateState);
+                app.invalidate();
                 LRESULT(0)
             }
             WM_CLEAN_DONE => {
