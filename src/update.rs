@@ -2,7 +2,8 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 
 use windows::Win32::Networking::WinHttp::{
-    INTERNET_DEFAULT_HTTPS_PORT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE,
+    INTERNET_DEFAULT_HTTPS_PORT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+    WINHTTP_CURRENT_USER_IE_PROXY_CONFIG, WINHTTP_FLAG_SECURE, WinHttpGetIEProxyConfigForCurrentUser,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen,
     WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
     WinHttpSetTimeouts,
@@ -17,13 +18,26 @@ pub enum Fetched {
 /// Asks GitHub for the latest release of this project. Returns `None` on any failure.
 pub fn fetch_latest_release() -> Option<Fetched> {
     unsafe {
-        let session = WinHttpOpen(
-            w!("ow-cache-cleaner"),
-            WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            0,
-        );
+        // WinHTTP ignores the proxy set in Windows "Internet options" unless it is passed explicitly.
+        let mut ie = WINHTTP_CURRENT_USER_IE_PROXY_CONFIG::default();
+        let named = WinHttpGetIEProxyConfigForCurrentUser(&mut ie).is_ok() && !ie.lpszProxy.is_null();
+        let session = if named {
+            WinHttpOpen(
+                w!("ow-cache-cleaner"),
+                WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+                PCWSTR(ie.lpszProxy.0),
+                PCWSTR(ie.lpszProxyBypass.0),
+                0,
+            )
+        } else {
+            WinHttpOpen(
+                w!("ow-cache-cleaner"),
+                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                PCWSTR::null(),
+                PCWSTR::null(),
+                0,
+            )
+        };
         if session.is_null() {
             return None;
         }
