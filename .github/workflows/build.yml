@@ -15,6 +15,6 @@ jobs:
       - run: cargo build --release
       - uses: actions/upload-artifact@v4
         with:
-          name: shader-cache-cleaner
-          path: target/release/shader-cache-cleaner.exe
+          name: ow-cache-cleaner
+          path: target/release/ow-cache-cleaner.exe
           if-no-files-found: error

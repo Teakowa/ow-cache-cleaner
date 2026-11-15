@@ -1,5 +1,5 @@
 [package]
-name = "shader-cache-cleaner"
+name = "ow-cache-cleaner"
 version = "0.1.0"
 edition = "2024"
 
